@@ -1,0 +1,13 @@
+{
+  "name": "@multi-dsh/gateway",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Per-instance entry: platform session check, DSH launch-token exchange, reverse proxy.",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node server.mjs"
+  }
+}

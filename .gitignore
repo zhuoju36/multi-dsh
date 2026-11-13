@@ -1,0 +1,28 @@
+# 依赖与产物
+node_modules/
+dist/
+build/
+.pnpm-store/
+
+# 本地环境
+.env
+.env.*
+!.env.example
+*.local
+
+# 凭据与数据
+.credentials.yaml
+/data/
+*.pem
+*.key
+
+# 日志与临时文件
+*.log
+tmp/
+.cache/
+
+# 编辑器/系统
+.DS_Store
+.idea/
+.vscode/
+*.swp
