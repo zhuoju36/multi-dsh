@@ -1,0 +1,17 @@
+[Unit]
+Description=multi-dsh Hub (tenant lifecycle control plane)
+After=docker.service
+Requires=docker.service
+
+[Service]
+User=hzj
+WorkingDirectory=/home/hzj/WorkSpace/multi-dsh
+Environment=PLATFORM_ENV_FILE=/srv/multi-dsh/secrets/platform.env
+Environment=HUB_SOCKET=/srv/multi-dsh/run/hub.sock
+Environment=REPO_ROOT=/home/hzj/WorkSpace/multi-dsh
+ExecStart=/usr/local/bin/node /home/hzj/WorkSpace/multi-dsh/services/hub/src/server.mjs
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

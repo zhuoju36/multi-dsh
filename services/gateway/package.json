@@ -5,9 +5,10 @@
   "description": "Per-instance entry: platform session check, DSH launch-token exchange, reverse proxy.",
   "type": "module",
   "engines": {
-    "node": ">=22"
+    "node": ">=22.13"
   },
   "scripts": {
-    "start": "node server.mjs"
+    "start": "node server.mjs",
+    "test": "node --test --test-timeout=15000 test/"
   }
 }

@@ -1,0 +1,11 @@
+# 构建上下文排除项（Dockerfile 以仓库根为 context）
+.git
+.gitignore
+.dsh-meow
+docs
+deploy/compose
+**/node_modules
+**/.env
+**/*.log
+coverage
+.pnpm-store

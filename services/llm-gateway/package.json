@@ -1,0 +1,15 @@
+{
+  "name": "@multi-dsh/llm-gateway",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Platform model key holder: protocol-aware passthrough and per-tenant metering.",
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.mjs",
+    "test": "node --test --test-timeout=15000 test/"
+  },
+  "dependencies": {
+    "@multi-dsh/db": "workspace:*",
+    "@multi-dsh/shared": "workspace:*"
+  }
+}

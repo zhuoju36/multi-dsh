@@ -1,0 +1,15 @@
+{
+  "name": "@multi-dsh/router",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Path-prefix entry router: /u/<user-id>/ -> tenant gateway, everything else -> auth.",
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.mjs",
+    "test": "node --test --test-timeout=15000 test/"
+  },
+  "dependencies": {
+    "@multi-dsh/db": "workspace:*",
+    "@multi-dsh/shared": "workspace:*"
+  }
+}

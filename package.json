@@ -1,0 +1,16 @@
+{
+  "name": "multi-dsh",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Multi-tenant DeepSeek Harness hosting: one user, one container.",
+  "packageManager": "pnpm@11.28.5",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "test": "pnpm -r --if-present test",
+    "db:migrate": "node db/migrate.mjs",
+    "smoke": "bash scripts/smoke-gateway.sh"
+  }
+}

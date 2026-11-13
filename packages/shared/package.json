@@ -1,0 +1,16 @@
+{
+  "name": "@multi-dsh/shared",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.mjs",
+    "./logger": "./src/logger.mjs",
+    "./config": "./src/config.mjs",
+    "./cookies": "./src/cookies.mjs",
+    "./ids": "./src/ids.mjs"
+  },
+  "scripts": {
+    "test": "node --test --test-timeout=15000 test/"
+  }
+}

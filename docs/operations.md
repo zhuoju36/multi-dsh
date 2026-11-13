@@ -12,7 +12,10 @@
 
 ### 内容
 
-- 每个 `data-<id>` 卷：`/data/dsh-home` + `/data/projects`。`cache/` 可排除（可再生）。
+- 每个租户目录 `/srv/multi-dsh/volumes/<id>/data`：`dsh-home/` + `home/` + `projects/`。`cache/` 可排除（可再生）。
+- 平台脚本：`deploy/compose/scripts/backup.sh`（停租户 → restic → 启租户 → 保留策略）与 `restore.sh`；PG 用 `pg_dump`。
+- 一期备份目标是同机 MinIO（`compose.platform.yml` 的 `minio`，bucket `multi-dsh-backup`）；凭据与仓库地址在 `/srv/multi-dsh/secrets/restic.env`，`host-setup.sh` 同时写入每日 03:00 的 `/etc/cron.d/multi-dsh-backup`。
+- 同机 MinIO 只能防误删/误操作，不防整机/磁盘故障；上线前应把 `RESTIC_REPOSITORY` 换成云 OSS/S3 或定期把仓库复制到外置介质。
 - `.credentials.yaml` 含用户虚拟 key 与 DSH cookie 签名密钥：必须加密（restic 自带）且桶策略最小权限。
 - 快照 tag 写入：`user_id`、镜像 digest、内容包版本、时间——恢复时才知道该配哪个版本。
 
@@ -29,6 +32,14 @@ DSH 会话是追加式 JSONL（Zstd 帧、尾部撕裂可恢复），文件级�
 - 每季度抽 1 个租户：恢复到临时卷 → 起一个临时容器 → 能登录、看到历史会话、继续对话。
 - 记录耗时与缺失项；不达 RTO 就调整保留策略与并发。
 
+## 1.5 控制面与账号
+
+- Hub：`systemctl status/restart multi-dsh-hub`，日志 `journalctl -u multi-dsh-hub`；socket `/srv/multi-dsh/run/hub.sock`。
+- 邀请码：`node services/auth/src/cli.mjs invite create --hours 72`；一次性、不绑定用户名。
+- 密码重置：`node services/auth/src/cli.mjs reset create --username <name>`，把打印的 `/reset?code=...` 发给用户；重置会吊销全部旧会话。
+- 空闲回收：Hub 的 `IDLE_TIMEOUT_MS`（默认 0 关闭）；开启后按 gateway `/internal/activity` 的 HTTP/WS 活动判断，页面有打开的 WebSocket 时不回收。
+- Hub 启动时 reconcile：DB 状态与容器实际状态不一致会自动修正。
+
 ## 2. 计量与账单（平台统一 key）
 
 计量点在 `llm-gateway`，不在 DSH 里：
@@ -39,6 +50,8 @@ DSH 会话是追加式 JSONL（Zstd 帧、尾部撕裂可恢复），文件级�
 - 网关日志不记录 prompt/response 正文，只记录用量与请求元数据。
 
 对账手段：DSH 会话日志里的 provider usage 可抽样核对网关记录；差异超过 1% 视为故障排查。
+
+运维入口：`node services/provisioner/src/cli.mjs usage --month YYYY-MM` 按用户汇总 token。
 
 ## 3. 升级与回滚
 

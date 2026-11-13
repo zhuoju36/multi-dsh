@@ -1,0 +1,17 @@
+{
+  "name": "@multi-dsh/hub",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Control plane: instance lifecycle, spawner, reconcile and idle culling.",
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.mjs",
+    "test": "node --test --test-timeout=15000 test/"
+  },
+  "dependencies": {
+    "@multi-dsh/db": "workspace:*",
+    "@multi-dsh/shared": "workspace:*",
+    "@multi-dsh/tenant": "workspace:*",
+    "fastify": "^5.12.8"
+  }
+}

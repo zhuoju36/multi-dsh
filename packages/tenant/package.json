@@ -1,0 +1,15 @@
+{
+  "name": "@multi-dsh/tenant",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.mjs",
+    "./env": "./src/env.mjs",
+    "./keys": "./src/keys.mjs",
+    "./compose": "./src/compose.mjs"
+  },
+  "dependencies": {
+    "@multi-dsh/shared": "workspace:*"
+  }
+}

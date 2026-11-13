@@ -1,0 +1,64 @@
+# One tenant, one compose project. Rendered by the provisioner:
+#
+#   docker compose -p dsh-<id> -f compose.tenant.yml \
+#     --env-file tenants/<id>.env up -d --wait
+#
+# Requires the platform stack to have created the external `multi-dsh-edge` network.
+services:
+  dsh:
+    image: ${DSH_IMAGE:?set DSH_IMAGE}
+    container_name: ${USER_ID:?set USER_ID}
+    environment:
+      USER_ID: ${USER_ID}
+      TENANT_ID: ${USER_ID}
+      USER_HOST: ${USER_HOST}
+      TENANT_PATH: ${TENANT_PATH:-}
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-}
+      DSH_PUBLIC_URL: ${DSH_PUBLIC_URL:-}
+      DSH_TRUSTED_HOST: ${DSH_TRUSTED_HOST:-}
+      LISTEN_PORT: "8080"
+      DSH_WEB_PORT: "3080"
+      DSH_HOME: /data/dsh-home
+      HOME: /data/home
+      TMPDIR: /tmp
+      XDG_CACHE_HOME: /tmp/cache
+      NPM_CONFIG_CACHE: /tmp/npm
+      PIP_CACHE_DIR: /tmp/pip
+      AUTH_INTERNAL_URL: ${AUTH_INTERNAL_URL}
+      AUTH_PUBLIC_URL: ${AUTH_PUBLIC_URL}
+      # DSH speaks the Anthropic Messages protocol; the gateway maps the paths.
+      DEEPSEEK_BASE_URL: http://llm-gateway:18090
+      DEEPSEEK_API_KEY: ${TENANT_KEY:?set TENANT_KEY}
+      DSH_VERSION: ${DSH_VERSION:-}
+      # Docker tmpfs is noexec; the addon cache under /tmp cannot be dlopen-ed.
+      # Load the prebuilt .node directly from the read-only image instead.
+      NARB_DISABLE_NATIVE_CACHE: "1"
+    volumes:
+      - ${DATA_DIR:?set DATA_DIR}:/data
+    ports:
+      # Loopback only: the browser reaches the tenant gateway here.
+      - "127.0.0.1:${HOST_PORT:?set HOST_PORT}:8080"
+    read_only: true
+    tmpfs:
+      - /tmp:size=1g
+      - /run/dsh:size=1m,uid=10001,gid=10001,mode=700
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    deploy:
+      resources:
+        limits:
+          cpus: "${TENANT_CPUS:-2}"
+          memory: ${TENANT_MEMORY:-2g}
+        reservations:
+          cpus: "0.5"
+          memory: 1g
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+    networks: [edge]
+
+networks:
+  edge:
+    external: true
+    name: multi-dsh-edge

@@ -1,0 +1,178 @@
+# Platform services for multi-dsh phase 1 (single host).
+#
+#   cd deploy/compose
+#   docker compose -f compose.platform.yml --env-file secrets/platform.env up -d
+#
+# The `edge` network is shared with the per-tenant compose projects.
+name: multi-dsh-platform
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-multi_dsh}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in the env file}
+      POSTGRES_DB: ${POSTGRES_DB:-multi_dsh}
+    volumes:
+      - ${POSTGRES_DATA_DIR:-/srv/multi-dsh/pgdata}:/var/lib/postgresql/data
+    ports:
+      # Loopback only: used by the host-side provisioner and migrations.
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-multi_dsh} -d $${POSTGRES_DB:-multi_dsh}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+    networks: [control]
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  auth:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/platform.Dockerfile
+      args:
+        SERVICE: auth
+    environment:
+      PORT: "18080"
+      DATABASE_URL: postgres://${POSTGRES_USER:-multi_dsh}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-multi_dsh}
+      AUTH_PUBLIC_URL: ${AUTH_PUBLIC_URL:-http://127.0.0.1:18000}
+      SESSION_TTL_HOURS: ${SESSION_TTL_HOURS:-12}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      HUB_SOCKET: /run/multi-dsh/hub.sock
+      HUB_TOKEN: ${HUB_TOKEN:?set HUB_TOKEN in the platform env file}
+    volumes:
+      - ${HUB_RUN_DIR:-/srv/multi-dsh/run}:/run/multi-dsh
+    ports:
+      - "127.0.0.1:18080:18080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    networks: [control, edge]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:18080/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  router:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/platform.Dockerfile
+      args:
+        SERVICE: router
+    # Host networking: the router has to reach the loopback tenant gateways
+    # (127.0.0.1:180xx) and the auth service (127.0.0.1:18080).
+    network_mode: host
+    environment:
+      ROUTER_PORT: "18000"
+      DATABASE_URL: postgres://${POSTGRES_USER:-multi_dsh}:${POSTGRES_PASSWORD:?}@127.0.0.1:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-multi_dsh}
+      AUTH_UPSTREAM: http://127.0.0.1:18080
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:18000/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-multi-dsh}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD}
+    volumes:
+      - ${MINIO_DATA_DIR:-/srv/multi-dsh/minio}:/data
+    ports:
+      # Restic on the host reaches S3 here; the console is for administration only.
+      - "127.0.0.1:${MINIO_PORT:-9000}:9000"
+      - "127.0.0.1:${MINIO_CONSOLE_PORT:-9001}:9001"
+    restart: unless-stopped
+    networks: [control]
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 512m
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  minio-init:
+    image: minio/mc:latest
+    depends_on: [minio]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-multi-dsh}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        until mc alias set local http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD"; do sleep 2; done
+        mc mb --ignore-existing local/multi-dsh-backup
+        echo "minio bucket ready"
+    restart: "no"
+    networks: [control]
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  llm-gateway:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/platform.Dockerfile
+      args:
+        SERVICE: llm-gateway
+    environment:
+      PORT: "18090"
+      DATABASE_URL: postgres://${POSTGRES_USER:-multi_dsh}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-multi_dsh}
+      UPSTREAM_BASE_URL: ${UPSTREAM_BASE_URL:-https://api.deepseek.com/anthropic}
+      PLATFORM_API_KEY: ${PLATFORM_API_KEY:?set PLATFORM_API_KEY in the env file}
+      MONTHLY_QUOTA_TOKENS: ${MONTHLY_QUOTA_TOKENS:-0}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    # Internal only: tenants reach it over the `edge` network.
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    networks: [control, edge]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:18090/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+networks:
+  control: {}
+  edge:
+    name: multi-dsh-edge

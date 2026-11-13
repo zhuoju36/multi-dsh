@@ -6,7 +6,7 @@
 平台账号（用户名 / 邮箱）
    └─ users.id          opaque 主键，如 usr_7k3m9q1f（base32，16 字符）
        ├─ 容器名        dsh-<id>
-       ├─ 卷名          data-<id>
+       ├─ 数据目录      /srv/multi-dsh/volumes/<id>/data
        ├─ 端口          registry 分配的 18001–18010（一期）
        └─ 虚拟 key      llm-<id>-<随机后缀>（llm-gateway 签发，可吊销）
 ```
@@ -18,17 +18,21 @@
 ## 2. 数据布局
 
 ```
-named volume data-<id>  →  /data
+/srv/multi-dsh/volumes/<id>/data   →  bind mount 到 /data
   ├─ dsh-home/                     DSH_HOME
   │   ├─ profiles/web/             profile 副本（manifest + patch + node_modules）
-  │   ├─ .credentials.yaml         用户模型 key（网关虚拟 key）、DSH cookie 签名密钥
-  │   ├─ .env                      用户环境层（代理等）
+  │   ├─ .credentials.yaml         DSH cookie 签名密钥（用户模型 key 不进这里）
+  │   ├─ .env                      home 层环境（DEEPSEEK_* 由容器 env 提供，优先级更高）
   │   ├─ sessions/                 每会话 JSONL（Zstd）；goal/进度事件也在这里
   │   ├─ skills/                   用户技能
-  │   ├─ attachments/v1/           附件
+  │   ├─ attachments/v1/           附件：内容寻址、去重；图片归一化；永不自动删除
   │   └─ cache/                    可再生缓存（备份可排除）
+  ├─ home/                         HOME：shell 历史、工具配置（缓存重定向到 /tmp）
   └─ projects/                     用户工作区（DSH 的 cwd）
 ```
+
+- 数据目录不用 Docker named volume：overlay2 无法限容。宿主数据盘用 XFS，每租户一个 project quota（默认 20 GiB）。
+- `/tmp`、`/run/dsh` 是 tmpfs；`HOME=/data/home` 保证只读根文件系统下工具仍可写。
 
 只读层 `/opt/multi-dsh`：`packages/`（运行时与前端产物）、`content/`（内容包）、`skills-src/`（官方技能源）、`patch/`（部署级 patch、模板）。版本随镜像或内容包版本走。
 
@@ -61,7 +65,7 @@ http://127.0.0.1:<port>/  →  gateway :8080  →  127.0.0.1:3080
 
 - 端口表存 registry（`instances.host_port`，唯一约束）；端口段 `18001–18100`，一期用前 10 个。
 - 端口被删除用户释放后，**不立即复用**（避免旧书签/旧 cookie 指到别人）；保留 30 天再回收。
-- 二期换成子域 + router：`Host → instance`，端口不再对用户暴露。两者的共同约束：**同一 origin 下不能放多个租户**，所以永远不做路径前缀路由。
+- 二期换成路径前缀 router：`/u/<id>/ → instance`，端口不再对用户暴露。DSH cookie 名相同，靠 router 把 cookie `Path` 重写为 `/u/<id>/` 隔离；spike 已验证（ADR-0009）。子域作为备选。
 
 ## 5. 配额与限额（一期）
 
@@ -69,7 +73,8 @@ http://127.0.0.1:<port>/  →  gateway :8080  →  127.0.0.1:3080
 |---|---|---|
 | CPU | request 0.5 / limit 2 vCPU | 空载≈0，启动与构建是瞬时峰值 |
 | 内存 | request 1 GiB / limit 2 GiB | 实测空载 375 MB（DSH 315 + gateway 62） |
-| 卷 | 20 GiB | 超 80% 告警；新库仅 44 KB |
+| 磁盘 | 20 GiB（XFS project quota） | 超 80% 告警；XFS 未就绪时先软配额 + 告警 |
+| 内存 | 2 GiB（大附件用户 4 GiB） | 200 MiB 附件上传瞬时多占 400–600 MB |
 | 模型额度 | 按月 token 配额（网关执行） | 超限返回 429 并提示 |
 | 登录尝试 | 5 次 / 5 分钟 / 账号 + IP | auth 限流 |
 | 请求速率 | 每用户 60 rpm | 可选，gateway 令牌桶 |
@@ -84,10 +89,10 @@ http://127.0.0.1:<port>/  →  gateway :8080  →  127.0.0.1:3080
 - 备份：宿主机 cron + restic → S3。
 - 开通：脚本 + 手工确认（`scripts/provision.sh`）。
 
-### 二期（≤100）— K8s + 子域
+### 二期（≤100）— K8s + 路径前缀（入口已落地）
 
 - 每用户 Pod + PVC（RWO）+ gateway sidecar；provisioner 调 K8s API。
-- 子域 `user-<id>.example.com` + 通配证书；router 按 Host 路由。
+- 公开入口 `https://host/u/<opaque-id>/` + 中央 router（动态路由表）；router 剥前缀、重写 cookie Path、透传 WS；单证书。
 - 滚动升级（停旧起新，PVC 不动）；每租户指标与告警。
 - 备份：CronJob 挂 PVC，restic → S3，定期恢复演练。
 

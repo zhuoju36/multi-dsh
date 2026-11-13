@@ -1,0 +1,17 @@
+{
+  "name": "@multi-dsh/provisioner",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Host-side tenant lifecycle CLI: create, delete, rotate keys, report usage.",
+  "type": "module",
+  "scripts": {
+    "start": "node src/cli.mjs",
+    "test": "node --test --test-timeout=15000 test/"
+  },
+  "dependencies": {
+    "@multi-dsh/db": "workspace:*",
+    "@multi-dsh/shared": "workspace:*",
+    "@multi-dsh/tenant": "workspace:*",
+    "@node-rs/argon2": "^2.2.2"
+  }
+}
